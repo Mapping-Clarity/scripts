@@ -96,7 +96,6 @@ async function main(workbook: ExcelScript.Workbook) {
       headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
       body: JSON.stringify({
         pipelineId: pipelineId,
-        originalFilename: workbook.getName() + ".csv",
         rows: payloadRows
       })
     });
@@ -106,20 +105,19 @@ async function main(workbook: ExcelScript.Workbook) {
     if (response.status === 200 || response.status === 202) {
       if (resData.async) {
         await pollAndProcess(activeSheet, apiKey, resData.jobId, rowsToProcess);
-      } else {
+      } else if (resData.results) {
         writeResults(activeSheet, resData, rowsToProcess, resData.jobId);
       }
     } else {
-      console.log(`API Error: ${resData.message}`);
+      console.log(`API Error (${response.status}): ${resData.message}`);
     }
   } catch (error) {
-    console.log("Connection Error.");
+    console.log(`Connection Error: ${String(error)}`);
   }
 }
 
 /**
- * Polling Helper Function:
- * Moved out of main loops to satisfy performance warnings.
+ * Polling Helper Function
  */
 async function fetchStatusHelper(url: string, key: string): Promise<ApiResponse | null> {
   try {
@@ -136,7 +134,6 @@ async function pollAndProcess(sheet: ExcelScript.Worksheet, apiKey: string, jobI
   const resultsUrl = `${CONFIG.STATUS_BASE_URL}/${jobId}/results`;
 
   for (let i = 0; i < CONFIG.MAX_POLL_ATTEMPTS; i++) {
-    // Wait for interval
     await new Promise(resolve => setTimeout(resolve, CONFIG.POLL_INTERVAL_MS));
 
     const data = await fetchStatusHelper(statusUrl, apiKey);
@@ -147,6 +144,7 @@ async function pollAndProcess(sheet: ExcelScript.Worksheet, apiKey: string, jobI
       writeResults(sheet, resultsData, rows, jobId);
       return;
     } else if (data && data.status === "failed") {
+      console.log("Job failed.");
       return;
     }
   }
